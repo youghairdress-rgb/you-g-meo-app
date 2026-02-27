@@ -1,1 +1,9 @@
 node_modules
+.env
+.env.*
+dist
+memo.txt
+*.txt
+*.log
+.firebase
+.gemini

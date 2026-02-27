@@ -1,0 +1,11 @@
+
+# Compiled TypeScript files
+*.js.map
+*.d.ts
+
+# Node artifacts
+node_modules/
+npm-debug.log
+
+# Mac OS
+.DS_Store
