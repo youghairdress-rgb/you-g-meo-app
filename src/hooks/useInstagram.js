@@ -47,21 +47,21 @@ export function useInstagram(config, saveToCloud) {
         const isVideo = type === 'video';
 
         // 1. コンテナ作成
-        // IMAGE/REELS を明示的に指定する
         const payload = {
             caption: caption,
-            access_token: config.instaToken // Bodyに含める
         };
 
         if (isVideo) {
+            // 動画(REELS)投稿
             payload.media_type = 'REELS';
             payload.video_url = mediaUrl.trim();
         } else {
-            payload.media_type = 'IMAGE'; // 明示的に指定
+            // 標準フィード画像投稿
+            // 【重要】Code 9004 回避のため media_type: 'IMAGE' はあえて指定しない
             payload.image_url = mediaUrl.trim();
         }
 
-        const containerRes = await fetch(`https://graph.facebook.com/v21.0/${config.instaBusinessId}/media`, {
+        const containerRes = await fetch(`https://graph.facebook.com/v21.0/${config.instaBusinessId}/media?access_token=${config.instaToken}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -117,7 +117,6 @@ export function useInstagram(config, saveToCloud) {
         const isVideo = type === 'video';
         const payload = {
             media_type: 'STORIES',
-            access_token: config.instaToken
         };
 
         if (isVideo) {
@@ -126,7 +125,7 @@ export function useInstagram(config, saveToCloud) {
             payload.image_url = mediaUrl.trim();
         }
 
-        const containerRes = await fetch(`https://graph.facebook.com/v21.0/${config.instaBusinessId}/media`, {
+        const containerRes = await fetch(`https://graph.facebook.com/v21.0/${config.instaBusinessId}/media?access_token=${config.instaToken}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
