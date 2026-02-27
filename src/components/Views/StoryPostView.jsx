@@ -43,7 +43,7 @@ export default function StoryPostView({
         setMessage({ type: 'info', text: 'ストーリー投稿中...' });
 
         try {
-            await postStory(selectedMedia.url);
+            await postStory(selectedMedia.url, selectedMedia.mediaType || 'image');
             setMessage({ type: 'success', text: 'ストーリー投稿に成功しました！🎉' });
         } catch (error) {
             setMessage({ type: 'error', text: error.message });

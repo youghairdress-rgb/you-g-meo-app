@@ -186,10 +186,10 @@ ${reviewText}
     try {
       showNotice("Instagramへ送信中...", "info");
 
-      const content = generatedContent[key];
       const instaText = typeof content === 'string' ? parseGeneratedContent(content).instagram : content?.instagram;
+      const media = selectedImage[key];
 
-      await postToInstagram(selectedImage[key]?.url, instaText);
+      await postToInstagram(media?.url, instaText, media?.mediaType || 'image');
       showNotice("Instagram投稿成功！ 📸", "success");
       setPostingStatus(prev => ({ ...prev, [key]: { ...prev[key], insta: 'success' } }));
     } catch (e) {
