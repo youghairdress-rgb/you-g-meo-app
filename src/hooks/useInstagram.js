@@ -2,8 +2,8 @@ import { useState, useCallback } from 'react';
 
 /**
  * Instagram 投稿用フック
- * JSON Body 方式を採用し、長い URL や動画(REELS)投稿に対応。
- * API Version: v21.0
+ * URLSearchParams 方式を採用し、安定性を極限まで高めた実装。
+ * API Version: v19.0 (実績重視)
  */
 export function useInstagram(config, saveToCloud) {
     const [posts, setPosts] = useState([]);
@@ -13,25 +13,22 @@ export function useInstagram(config, saveToCloud) {
         if (!config.instaToken) return;
         setLoading(true);
         try {
-            const accountRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?access_token=${config.instaToken}&fields=instagram_business_account`);
+            const accountRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${config.instaToken}&fields=instagram_business_account`);
             const accountData = await accountRes.json();
             const businessId = accountData.data?.[0]?.instagram_business_account?.id;
 
             if (businessId) {
-                if (config.instaBusinessId !== businessId) {
+                if (businessId !== config.instaBusinessId) {
                     const updatedConfig = { ...config, instaBusinessId: businessId };
                     if (saveToCloud) await saveToCloud(updatedConfig, null);
                 }
 
-                const mediaRes = await fetch(`https://graph.facebook.com/v21.0/${businessId}/media?access_token=${config.instaToken}&fields=id,caption,media_url,timestamp&limit=6`);
+                const mediaRes = await fetch(`https://graph.facebook.com/v19.0/${businessId}/media?access_token=${config.instaToken}&fields=id,caption,media_url,timestamp&limit=6`);
                 const mediaData = await mediaRes.json();
                 if (mediaData.data) setPosts(mediaData.data);
-            } else {
-                throw new Error("Instagram IDが取得できません");
             }
         } catch (error) {
             console.error(error);
-            throw error;
         } finally {
             setLoading(false);
         }
@@ -46,25 +43,22 @@ export function useInstagram(config, saveToCloud) {
 
         const isVideo = type === 'video';
 
-        // 1. コンテナ作成
-        const payload = {
-            caption: caption,
-        };
+        // 1. コンテナ作成 (URLSearchParams方式)
+        const params = new URLSearchParams();
+        params.append('access_token', config.instaToken);
+        params.append('caption', caption);
 
         if (isVideo) {
-            // 動画(REELS)投稿
-            payload.media_type = 'REELS';
-            payload.video_url = mediaUrl.trim();
+            params.append('media_type', 'REELS');
+            params.append('video_url', mediaUrl.trim());
         } else {
-            // 標準フィード画像投稿
-            // 【重要】Code 9004 回避のため media_type: 'IMAGE' はあえて指定しない
-            payload.image_url = mediaUrl.trim();
+            // フィード画像の場合は media_type を省略（Code 9004 回避）
+            params.append('image_url', mediaUrl.trim());
         }
 
-        const containerRes = await fetch(`https://graph.facebook.com/v21.0/${config.instaBusinessId}/media?access_token=${config.instaToken}`, {
+        const containerRes = await fetch(`https://graph.facebook.com/v19.0/${config.instaBusinessId}/media`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: params
         });
         const cData = await containerRes.json();
 
@@ -74,11 +68,11 @@ export function useInstagram(config, saveToCloud) {
             throw new Error(`Insta作成失敗: ${err.message || "不明"} (Code: ${err.code})`);
         }
 
-        // 2. 処理完了待機
+        // 2. 待機
         let isReady = false;
         for (let i = 0; i < 20; i++) {
             await new Promise(r => setTimeout(r, 2000));
-            const statusRes = await fetch(`https://graph.facebook.com/v21.0/${cData.id}?access_token=${config.instaToken}&fields=status_code,status`);
+            const statusRes = await fetch(`https://graph.facebook.com/v19.0/${cData.id}?access_token=${config.instaToken}&fields=status_code,status`);
             const statusData = await statusRes.json();
 
             if (statusData.status_code === 'FINISHED') {
@@ -91,10 +85,10 @@ export function useInstagram(config, saveToCloud) {
             }
         }
 
-        if (!isReady) throw new Error("Instagram画像/動画処理タイムアウト");
+        if (!isReady) throw new Error("Instagram処理タイムアウト");
 
         // 3. 公開
-        const publishRes = await fetch(`https://graph.facebook.com/v21.0/${config.instaBusinessId}/media_publish?creation_id=${cData.id}&access_token=${config.instaToken}`, {
+        const publishRes = await fetch(`https://graph.facebook.com/v19.0/${config.instaBusinessId}/media_publish?creation_id=${cData.id}&access_token=${config.instaToken}`, {
             method: 'POST'
         });
         const pData = await publishRes.json();
@@ -115,20 +109,19 @@ export function useInstagram(config, saveToCloud) {
         if (!mediaUrl) throw new Error("メディアURLが必要です");
 
         const isVideo = type === 'video';
-        const payload = {
-            media_type: 'STORIES',
-        };
+        const params = new URLSearchParams();
+        params.append('access_token', config.instaToken);
+        params.append('media_type', 'STORIES');
 
         if (isVideo) {
-            payload.video_url = mediaUrl.trim();
+            params.append('video_url', mediaUrl.trim());
         } else {
-            payload.image_url = mediaUrl.trim();
+            params.append('image_url', mediaUrl.trim());
         }
 
-        const containerRes = await fetch(`https://graph.facebook.com/v21.0/${config.instaBusinessId}/media?access_token=${config.instaToken}`, {
+        const containerRes = await fetch(`https://graph.facebook.com/v19.0/${config.instaBusinessId}/media`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: params
         });
 
         const cData = await containerRes.json();
@@ -142,7 +135,7 @@ export function useInstagram(config, saveToCloud) {
         let isReady = false;
         for (let i = 0; i < 20; i++) {
             await new Promise(r => setTimeout(r, 2000));
-            const statusRes = await fetch(`https://graph.facebook.com/v21.0/${cData.id}?access_token=${config.instaToken}&fields=status_code,status`);
+            const statusRes = await fetch(`https://graph.facebook.com/v19.0/${cData.id}?access_token=${config.instaToken}&fields=status_code,status`);
             const statusData = await statusRes.json();
 
             if (statusData.status_code === 'FINISHED') {
@@ -157,7 +150,7 @@ export function useInstagram(config, saveToCloud) {
 
         if (!isReady) throw new Error("ストーリー処理タイムアウト");
 
-        const publishRes = await fetch(`https://graph.facebook.com/v21.0/${config.instaBusinessId}/media_publish?creation_id=${cData.id}&access_token=${config.instaToken}`, {
+        const publishRes = await fetch(`https://graph.facebook.com/v19.0/${config.instaBusinessId}/media_publish?creation_id=${cData.id}&access_token=${config.instaToken}`, {
             method: 'POST'
         });
         const pData = await publishRes.json();
