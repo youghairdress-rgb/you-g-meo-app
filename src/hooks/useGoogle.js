@@ -61,6 +61,7 @@ export function useGoogle(config) {
             const postFunction = httpsCallable(functions, 'postToGoogleBusiness');
             await postFunction({
                 accessToken: token,
+                accountId: config.accountId,
                 locationId: config.locationId,
                 summary: summary,
                 mediaUrl: mediaUrl,

@@ -5,25 +5,23 @@ admin.initializeApp();
 
 /**
  * postToGoogleBusiness (v2 Callable)
- * フロントエンドから httpsCallable で呼び出される。
- * Google Business Profile API へ投稿を代行するプロキシ関数。
+ * Google Business Profile API v4 へ投稿を代行するプロキシ関数。
  */
 exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request) => {
     // --- 1. パラメータ取得 ---
-    const { accessToken, locationId, summary, mediaUrl, actionUrl } = request.data;
+    const { accessToken, accountId, locationId, summary, mediaUrl, actionUrl } = request.data;
 
     // --- 2. バリデーション ---
-    if (!accessToken || !locationId || !summary) {
+    if (!accessToken || !accountId || !locationId || !summary) {
         throw new HttpsError(
             "invalid-argument",
-            "必須パラメータが不足しています (accessToken, locationId, summary)"
+            "必須パラメータが不足しています (accessToken, accountId, locationId, summary)"
         );
     }
 
-    // --- 3. GBP API へ投稿 ---
+    // --- 3. GBP API v4 へ投稿 ---
     try {
-        const parent = `locations/${locationId}`;
-        const url = `https://business.googleapis.com/v1/${parent}/localPosts`;
+        const url = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/localPosts`;
 
         const payload = {
             languageCode: "ja",
@@ -38,7 +36,6 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
                 : [],
         };
 
-        // Node 18 の組み込み fetch を使用（node-fetch 不要）
         const response = await fetch(url, {
             method: "POST",
             headers: {
@@ -48,22 +45,34 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
             body: JSON.stringify(payload),
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error("Google API Error:", JSON.stringify(errorData));
+        // --- 4. 安全なレスポンス処理 ---
+        const responseText = await response.text();
+
+        let responseData;
+        try {
+            responseData = JSON.parse(responseText);
+        } catch (_parseError) {
+            // HTML 等の非 JSON レスポンスが返ってきた場合
+            console.error("Non-JSON Response:", responseText.substring(0, 500));
             throw new HttpsError(
                 "unknown",
-                errorData.error?.message || "Google API リクエストに失敗しました",
-                errorData
+                `Google API が予期しないレスポンスを返しました (HTTP ${response.status}): ${responseText.substring(0, 200)}`
             );
         }
 
-        const result = await response.json();
-        return { success: true, data: result };
+        if (!response.ok) {
+            console.error("Google API Error:", JSON.stringify(responseData));
+            throw new HttpsError(
+                "unknown",
+                responseData.error?.message || `Google API エラー (HTTP ${response.status})`,
+                responseData
+            );
+        }
+
+        return { success: true, data: responseData };
 
     } catch (error) {
         console.error("Function Error:", error);
-        // HttpsError はそのまま再スロー、それ以外はラップ
         if (error instanceof HttpsError) throw error;
         throw new HttpsError("internal", error.message);
     }
