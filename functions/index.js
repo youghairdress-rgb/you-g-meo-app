@@ -1,4 +1,4 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, HttpsError, onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
@@ -22,25 +22,30 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
 
     try {
         // --- 3. ペイロード構築 ---
-        const url = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/localPosts`;
+        // ID のサニタイズ (accounts/ や locations/ プレフィックスが重複しないようにする)
+        const cleanAccountId = accountId.includes("/") ? accountId.split("/").pop().trim() : accountId.trim();
+        const cleanLocationId = locationId.includes("/") ? locationId.split("/").pop().trim() : locationId.trim();
+
+        const url = `https://mybusiness.googleapis.com/v4/accounts/${cleanAccountId}/locations/${cleanLocationId}/localPosts`;
 
         const payload = {
             languageCode: "ja",
-            summary: summary,
+            summary: summary.trim(),
             topicType: "STANDARD",
             callToAction: {
                 actionType: "BOOK",
-                url: actionUrl || "https://beauty.hotpepper.jp/slnH000667808/",
+                url: (actionUrl || "https://beauty.hotpepper.jp/slnH000667808/").trim(),
             },
         };
 
-        // メディアがあれば追加（image → PHOTO, video → VIDEO）
+        // メディアがあれば追加
         if (mediaUrl) {
             const mediaFormat = mediaType === "video" ? "VIDEO" : "PHOTO";
-            payload.media = [{ mediaFormat, sourceUrl: mediaUrl }];
+            payload.media = [{ mediaFormat, sourceUrl: mediaUrl.trim() }];
         }
 
-        console.log("GBP API リクエスト:", JSON.stringify(payload).substring(0, 300));
+        console.log(`GBP 投稿開始: URL=${url}`);
+        console.log("ペイロード:", JSON.stringify(payload));
 
         // --- 4. GBP API へ送信 ---
         const response = await fetch(url, {
@@ -67,11 +72,16 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
         }
 
         if (!response.ok) {
-            console.error("Google API Error:", JSON.stringify(responseData));
+            // エラー詳細を深くログに出力
+            console.error("Google API Error Full Response:", JSON.stringify(responseData, null, 2));
+
+            const errorMessage = responseData.error?.message || `Google API エラー (HTTP ${response.status})`;
+            const errorDetails = responseData.error?.details || [];
+
             throw new HttpsError(
-                "unknown",
-                responseData.error?.message || `Google API エラー (HTTP ${response.status})`,
-                responseData
+                "invalid-argument", // 400 の場合は明示的に invalid-argument に寄せる
+                `${errorMessage} (詳細は関数ログを確認してください)`,
+                { error: responseData.error }
             );
         }
 
@@ -81,5 +91,41 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
         console.error("Function Error:", error);
         if (error instanceof HttpsError) throw error;
         throw new HttpsError("internal", error.message);
+    }
+});
+
+/**
+ * getMedia (v2 Https)
+ * Meta/Instagramのスクレイパー向けに、Firebase Storageのファイルを
+ * クリーンなURL（クエリパラメータ無しの .png / .mp4 形式に見えるURL）で提供するプロキシ。
+ */
+exports.getMedia = onRequest({ region: "us-central1", cors: true, invoker: 'public' }, async (req, res) => {
+    const filePath = req.query.path;
+    if (!filePath) {
+        return res.status(400).send("Path missing");
+    }
+
+    try {
+        const bucket = admin.storage().bucket();
+        const file = bucket.file(filePath);
+
+        const [exists] = await file.exists();
+        if (!exists) {
+            console.warn(`File not found: ${filePath}`);
+            return res.status(404).send("File not found");
+        }
+
+        const [metadata] = await file.getMetadata();
+
+        // ブラウザやMetaが正しく認識できるようヘッダーを設定
+        res.setHeader("Content-Type", metadata.contentType || "application/octet-stream");
+        res.setHeader("Cache-Control", "public, max-age=3600");
+
+        // ストリームで転送
+        file.createReadStream().pipe(res);
+
+    } catch (error) {
+        console.error("Proxy Error:", error);
+        res.status(500).send("Internal Server Error");
     }
 });

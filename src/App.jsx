@@ -88,7 +88,7 @@ export default function App() {
               const parsed = parseGeneratedContent(generatedText);
 
               await postToBusinessProfile(parsed.google, mediaUrl, mediaType);
-              await postToInstagram(mediaUrl, parsed.instagram);
+              await postToInstagram(matched.fullPath || mediaUrl, parsed.instagram, mediaType);
 
               showNotice(`自動投稿完了: ${matched.topic}`, "success");
             } catch (e) {
@@ -186,10 +186,11 @@ ${reviewText}
     try {
       showNotice("Instagramへ送信中...", "info");
 
+      const content = generatedContent[key];
       const instaText = typeof content === 'string' ? parseGeneratedContent(content).instagram : content?.instagram;
       const media = selectedImage[key];
 
-      await postToInstagram(media?.url, instaText, media?.mediaType || 'image');
+      await postToInstagram(media?.fullPath, instaText, media?.mediaType || 'image');
       showNotice("Instagram投稿成功！ 📸", "success");
       setPostingStatus(prev => ({ ...prev, [key]: { ...prev[key], insta: 'success' } }));
     } catch (e) {

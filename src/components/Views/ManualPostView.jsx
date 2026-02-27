@@ -41,7 +41,7 @@ export function ManualPostView({
     const handleSelectMedia = (file) => {
         setSelectedImage(prev => ({
             ...prev,
-            'manual': { url: file.url, name: file.name, mediaType: file.mediaType }
+            'manual': { url: file.url, name: file.name, mediaType: file.mediaType, fullPath: file.fullPath }
         }));
     };
 

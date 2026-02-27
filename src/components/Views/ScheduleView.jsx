@@ -19,6 +19,7 @@ export function ScheduleView({ postingRules, setPostingRules, saveToCloud, stora
 
     const handleSelectMedia = (ruleId, file) => {
         updateRule(ruleId, 'imageUrl', file.url);
+        updateRule(ruleId, 'fullPath', file.fullPath);
         updateRule(ruleId, 'thumbnailUrl', file.url);
         updateRule(ruleId, 'mediaType', file.mediaType);
         setSelectingRuleId(null);
