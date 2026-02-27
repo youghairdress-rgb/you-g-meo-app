@@ -100,8 +100,17 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
  * クリーンなURL（クエリパラメータ無しの .png / .mp4 形式に見えるURL）で提供するプロキシ。
  */
 exports.getMedia = onRequest({ region: "us-central1", cors: true, invoker: 'public' }, async (req, res) => {
-    const filePath = req.query.path;
+    // path をクエリパラメータ or Hosting経由のパスから取得
+    let filePath = req.query.path || req.params[0];
+
+    // Hosting rewrite (/media-proxy/**) の場合、req.params[0] に path が入る
+    // 不要なスラッシュを削除
+    if (filePath && filePath.startsWith("/")) {
+        filePath = filePath.substring(1);
+    }
+
     if (!filePath) {
+        console.warn("Path missing in request");
         return res.status(400).send("Path missing");
     }
 

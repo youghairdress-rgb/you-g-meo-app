@@ -2,8 +2,8 @@ import { useState, useCallback } from 'react';
 
 /**
  * Instagram 投稿用フック
- * Cloud Functions プロキシ (getMedia) 方式を採用。
- * これにより Firebase Storage の複雑なURLを避け、Meta API のダウンロード失敗 (Code: 9004) を防ぐ。
+ * Firebase Storage の「トークンなし公開メディア URL」を直接使用する方式。
+ * プロキシやトークンによる複雑さを排除し、Meta API との互換性を最大限に高めた「究極の安定版」。
  */
 export function useInstagram(config, saveToCloud) {
     const [posts, setPosts] = useState([]);
@@ -37,9 +37,6 @@ export function useInstagram(config, saveToCloud) {
 
     /**
      * フィード/リール投稿
-     * @param {string} mediaPath - Firebase Storage 内のパス (e.g., "posts/123.png")
-     * @param {string} caption - キャプション
-     * @param {string} type - 'image' | 'video'
      */
     const postToInstagram = useCallback(async (mediaPathOrUrl, caption, type = 'image') => {
         if (!config.instaBusinessId || !config.instaToken) throw new Error("Instagram連携未設定");
@@ -47,11 +44,9 @@ export function useInstagram(config, saveToCloud) {
 
         let mediaPath = mediaPathOrUrl;
 
-        // 安全策: もしフルURL (https://...) が渡された場合、パスへの変換を試みる
+        // パスがフルURL (https://...) の場合はパス部分を抽出
         if (mediaPathOrUrl.startsWith('http')) {
             try {
-                // Firebase Storage URLからパス部分を抽出する試み
-                // https://firebasestorage.googleapis.com/v0/b/.../o/posts%2F123.png?alt=media...
                 const decodedUrl = decodeURIComponent(mediaPathOrUrl);
                 const match = decodedUrl.match(/\/o\/(.+?)\?/);
                 if (match && match[1]) {
@@ -64,12 +59,10 @@ export function useInstagram(config, saveToCloud) {
 
         const isVideo = type === 'video';
 
-        // 1. メディアプロキシURLの構築
-        // このプロキシ経由で Meta に画像を提供することで、Code 9004 エラーを回避する
-        const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-        const proxyBase = `https://us-central1-${projectId}.cloudfunctions.net/getMedia`;
-        // Meta のパーサーを助けるためにダミーの拡張子を末尾に付加
-        const proxyUrl = `${proxyBase}?path=${encodeURIComponent(mediaPath)}&ext=.${isVideo ? 'mp4' : 'png'}`;
+        // 1. 直通公開メディアURLの構築
+        // トークンやプロキシを介さないため、Meta のスクレイパーが最も確実に取得できる形式
+        const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(mediaPath)}?alt=media`;
 
         const params = new URLSearchParams();
         params.append('access_token', config.instaToken);
@@ -77,10 +70,10 @@ export function useInstagram(config, saveToCloud) {
 
         if (isVideo) {
             params.append('media_type', 'REELS');
-            params.append('video_url', proxyUrl);
+            params.append('video_url', publicUrl);
         } else {
-            // 画像投稿
-            params.append('image_url', proxyUrl);
+            // 画像投稿 (media_typeは省略がMeta推奨)
+            params.append('image_url', publicUrl);
         }
 
         const version = 'v19.0';
@@ -93,7 +86,7 @@ export function useInstagram(config, saveToCloud) {
         if (!cData.id || cData.error) {
             console.error("Insta Container Full Error:", cData);
             const err = cData.error || {};
-            throw new Error(`Instaコンテナ作成失敗: ${err.message || "不明"} (Code: ${err.code}) URL: ${proxyUrl.substring(0, 50)}...`);
+            throw new Error(`Instaコンテナ作成失敗: ${err.message || "不明"} (Code: ${err.code}) URL: ${publicUrl.substring(0, 50)}...`);
         }
 
         // 2. 待機
@@ -150,18 +143,17 @@ export function useInstagram(config, saveToCloud) {
         }
 
         const isVideo = type === 'video';
-        const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
-        const proxyBase = `https://us-central1-${projectId}.cloudfunctions.net/getMedia`;
-        const proxyUrl = `${proxyBase}?path=${encodeURIComponent(mediaPath)}&ext=.${isVideo ? 'mp4' : 'png'}`;
+        const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(mediaPath)}?alt=media`;
 
         const params = new URLSearchParams();
         params.append('access_token', config.instaToken);
         params.append('media_type', 'STORIES');
 
         if (isVideo) {
-            params.append('video_url', proxyUrl);
+            params.append('video_url', publicUrl);
         } else {
-            params.append('image_url', proxyUrl);
+            params.append('image_url', publicUrl);
         }
 
         const version = 'v19.0';
