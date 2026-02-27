@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
+import { getStorage } from 'firebase/storage';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -17,6 +18,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const functions = getFunctions(app, 'us-central1');
+export const storage = getStorage(app);
 
 // Global App ID logic
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'you-g-meo-app-v1';

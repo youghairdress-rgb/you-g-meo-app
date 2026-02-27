@@ -6,10 +6,11 @@ admin.initializeApp();
 /**
  * postToGoogleBusiness (v2 Callable)
  * Google Business Profile API v4 へ投稿を代行するプロキシ関数。
+ * Firebase Storage の公開URLをそのまま GBP API に渡すシンプル構成。
  */
 exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request) => {
     // --- 1. パラメータ取得 ---
-    const { accessToken, accountId, locationId, summary, mediaUrl, actionUrl } = request.data;
+    const { accessToken, accountId, locationId, summary, mediaUrl, mediaType, actionUrl } = request.data;
 
     // --- 2. バリデーション ---
     if (!accessToken || !accountId || !locationId || !summary) {
@@ -19,8 +20,8 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
         );
     }
 
-    // --- 3. GBP API v4 へ投稿 ---
     try {
+        // --- 3. ペイロード構築 ---
         const url = `https://mybusiness.googleapis.com/v4/accounts/${accountId}/locations/${locationId}/localPosts`;
 
         const payload = {
@@ -31,11 +32,17 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
                 actionType: "BOOK",
                 url: actionUrl || "https://beauty.hotpepper.jp/slnH000667808/",
             },
-            media: mediaUrl
-                ? [{ mediaFormat: "PHOTO", sourceUrl: mediaUrl }]
-                : [],
         };
 
+        // メディアがあれば追加（image → PHOTO, video → VIDEO）
+        if (mediaUrl) {
+            const mediaFormat = mediaType === "video" ? "VIDEO" : "PHOTO";
+            payload.media = [{ mediaFormat, sourceUrl: mediaUrl }];
+        }
+
+        console.log("GBP API リクエスト:", JSON.stringify(payload).substring(0, 300));
+
+        // --- 4. GBP API へ送信 ---
         const response = await fetch(url, {
             method: "POST",
             headers: {
@@ -45,14 +52,13 @@ exports.postToGoogleBusiness = onCall({ region: "us-central1" }, async (request)
             body: JSON.stringify(payload),
         });
 
-        // --- 4. 安全なレスポンス処理 ---
+        // --- 5. 安全なレスポンス処理 ---
         const responseText = await response.text();
 
         let responseData;
         try {
             responseData = JSON.parse(responseText);
         } catch (_parseError) {
-            // HTML 等の非 JSON レスポンスが返ってきた場合
             console.error("Non-JSON Response:", responseText.substring(0, 500));
             throw new HttpsError(
                 "unknown",

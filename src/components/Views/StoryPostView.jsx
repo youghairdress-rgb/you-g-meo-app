@@ -1,35 +1,49 @@
-import React, { useState } from 'react';
-import { Clock, Calendar, Trash2, Plus, GripVertical } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Clock, Calendar, Trash2, Upload, Film } from 'lucide-react';
 
 const DAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
-export default function StoryPostView({ driveFiles, config, postStory, onRefreshDrive, storyRules = [], setStoryRules, saveToCloud }) {
-    const [selectedImage, setSelectedImage] = useState(null);
+export default function StoryPostView({
+    storageFiles = [],
+    config,
+    postStory,
+    onUpload,
+    uploading,
+    uploadProgress,
+    onRefreshFiles,
+    onDeleteFile,
+    storyRules = [],
+    setStoryRules,
+    saveToCloud
+}) {
+    const [selectedMedia, setSelectedMedia] = useState(null);
     const [isPosting, setIsPosting] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
+    const fileInputRef = useRef(null);
 
     // Schedule State
     const [scheduleMode, setScheduleMode] = useState(false);
     const [scheduleForm, setScheduleForm] = useState({ type: 'daily', day: 0, time: '20:00' });
 
-    const handleImageSelect = (file) => {
-        // High-res URL generation
-        let finalUrl = file.thumbnailLink ? file.thumbnailLink.replace(/=s\d+.*$/, '=s4096') : file.webContentLink;
-        if (!finalUrl) finalUrl = `https://drive.google.com/thumbnail?id=${file.id}&sz=w4096`;
-
-        setSelectedImage({
-            ...file,
-            url: finalUrl
-        });
+    const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            await onUpload(file);
+            setMessage({ type: 'success', text: 'アップロード完了！' });
+        } catch (err) {
+            setMessage({ type: 'error', text: `アップロード失敗: ${err.message}` });
+        }
+        e.target.value = '';
     };
 
     const handlePost = async () => {
-        if (!selectedImage) return;
+        if (!selectedMedia) return;
         setIsPosting(true);
-        setMessage({ type: 'info', text: 'ストーリー投稿中...（画像の準備に時間がかかる場合があります）' });
+        setMessage({ type: 'info', text: 'ストーリー投稿中...' });
 
         try {
-            await postStory(selectedImage.url);
+            await postStory(selectedMedia.url);
             setMessage({ type: 'success', text: 'ストーリー投稿に成功しました！🎉' });
         } catch (error) {
             setMessage({ type: 'error', text: error.message });
@@ -39,13 +53,13 @@ export default function StoryPostView({ driveFiles, config, postStory, onRefresh
     };
 
     const handleSchedule = async () => {
-        if (!selectedImage) return;
+        if (!selectedMedia) return;
         const newRule = {
             id: Date.now(),
             ...scheduleForm,
-            fileId: selectedImage.id,
-            imageUrl: selectedImage.url,
-            thumbnailUrl: selectedImage.thumbnailLink
+            imageUrl: selectedMedia.url,
+            thumbnailUrl: selectedMedia.url,
+            mediaType: selectedMedia.mediaType,
         };
         const newRules = [...storyRules, newRule];
         setStoryRules(newRules);
@@ -69,35 +83,66 @@ export default function StoryPostView({ driveFiles, config, postStory, onRefresh
                 </h2>
 
                 <p className="text-sm text-gray-500 mb-6 font-bold">
-                    画像を選択して「即時投稿」するか、時間を指定して「定期配信」に登録できます。
+                    画像・動画を選択して「即時投稿」するか、時間を指定して「定期配信」に登録できます。
                 </p>
 
-                {/* Image Selection Area */}
+                {/* Upload & Gallery */}
                 <div className="mb-6">
                     <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-bold text-gray-700">1. 画像を選択</label>
-                        <button onClick={onRefreshDrive} className="text-xs text-blue-500 hover:underline">
-                            フォルダ再読み込み
-                        </button>
+                        <label className="text-sm font-bold text-gray-700">1. メディアを選択</label>
+                        <div className="flex gap-2">
+                            <button onClick={onRefreshFiles} className="text-xs text-blue-500 hover:underline font-bold">再読み込み</button>
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploading}
+                                className="bg-black text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 font-bold hover:bg-gray-800"
+                            >
+                                <Upload size={12} /> アップロード
+                            </button>
+                            <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleFileChange} className="hidden" />
+                        </div>
                     </div>
 
+                    {uploading && (
+                        <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                            <div className="bg-orange-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-60 overflow-y-auto border p-2 rounded bg-gray-50">
-                        {driveFiles.map(file => (
+                        {storageFiles.length > 0 ? storageFiles.map(file => (
                             <div
-                                key={file.id}
-                                onClick={() => handleImageSelect(file)}
-                                className={`cursor-pointer border-2 rounded overflow-hidden relative aspect-square transition-all ${selectedImage?.id === file.id ? 'border-orange-500 ring-2 ring-orange-200' : 'border-transparent hover:border-gray-300'}`}
+                                key={file.fullPath}
+                                className={`cursor-pointer border-2 rounded overflow-hidden relative aspect-square transition-all group ${selectedMedia?.url === file.url ? 'border-orange-500 ring-2 ring-orange-200' : 'border-transparent hover:border-gray-300'}`}
                             >
-                                <img src={file.thumbnailLink} alt={file.name} className="w-full h-full object-cover" />
+                                {file.mediaType === 'video' ? (
+                                    <div onClick={() => setSelectedMedia(file)} className="w-full h-full bg-gray-800 flex items-center justify-center">
+                                        <Film size={24} className="text-white" />
+                                    </div>
+                                ) : (
+                                    <img onClick={() => setSelectedMedia(file)} src={file.url} alt={file.name} className="w-full h-full object-cover" />
+                                )}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onDeleteFile(file.fullPath); }}
+                                    className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <Trash2 size={10} />
+                                </button>
                             </div>
-                        ))}
+                        )) : (
+                            <p className="col-span-full text-center text-gray-400 py-8 text-sm">画像をアップロードしてください</p>
+                        )}
                     </div>
                 </div>
 
-                {/* Selected Image Preview (Large) */}
-                {selectedImage && (
+                {/* Selected Preview */}
+                {selectedMedia && (
                     <div className="mb-6 flex justify-center bg-gray-900 rounded-lg p-4">
-                        <img src={selectedImage.url} alt="Preview" className="max-h-96 object-contain" />
+                        {selectedMedia.mediaType === 'video' ? (
+                            <video src={selectedMedia.url} controls className="max-h-96 rounded" />
+                        ) : (
+                            <img src={selectedMedia.url} alt="Preview" className="max-h-96 object-contain" />
+                        )}
                     </div>
                 )}
 
@@ -112,16 +157,16 @@ export default function StoryPostView({ driveFiles, config, postStory, onRefresh
                     <div className="flex gap-4 w-full md:w-3/4">
                         <button
                             onClick={handlePost}
-                            disabled={!selectedImage || isPosting}
-                            className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-all flex justify-center items-center gap-2 ${!selectedImage || isPosting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-orange-500 to-red-500 hover:scale-[1.02]'}`}
+                            disabled={!selectedMedia || isPosting}
+                            className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-all flex justify-center items-center gap-2 ${!selectedMedia || isPosting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-orange-500 to-red-500 hover:scale-[1.02]'}`}
                         >
                             {isPosting ? '送信中...' : '今すぐ投稿'}
                         </button>
 
                         <button
                             onClick={() => setScheduleMode(!scheduleMode)}
-                            disabled={!selectedImage}
-                            className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-all flex justify-center items-center gap-2 ${!selectedImage ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:scale-[1.02]'}`}
+                            disabled={!selectedMedia}
+                            className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-all flex justify-center items-center gap-2 ${!selectedMedia ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:scale-[1.02]'}`}
                         >
                             <Clock size={18} />
                             定期配信に登録
@@ -130,7 +175,7 @@ export default function StoryPostView({ driveFiles, config, postStory, onRefresh
                 </div>
 
                 {/* Schedule Form */}
-                {scheduleMode && selectedImage && (
+                {scheduleMode && selectedMedia && (
                     <div className="mt-8 p-6 bg-blue-50 rounded-2xl border border-blue-100 animate-in fade-in slide-in-from-top-2">
                         <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
                             <Calendar size={18} /> 定期配信の設定
@@ -166,7 +211,7 @@ export default function StoryPostView({ driveFiles, config, postStory, onRefresh
                             onClick={handleSchedule}
                             className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all"
                         >
-                            この画像と設定で保存する
+                            このメディアと設定で保存する
                         </button>
                     </div>
                 )}
@@ -190,7 +235,6 @@ export default function StoryPostView({ driveFiles, config, postStory, onRefresh
                                         {rule.type === 'weekly' && <span>{DAYS[rule.day]}曜日</span>}
                                         <span className="text-lg font-mono">{rule.time}</span>
                                     </div>
-                                    <p className="text-xs text-gray-400 mt-1 truncate w-48">ID: {rule.id}</p>
                                 </div>
                                 <button
                                     onClick={() => handleDeleteRule(rule.id)}

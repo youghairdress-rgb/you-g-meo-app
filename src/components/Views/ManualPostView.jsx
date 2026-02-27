@@ -1,5 +1,5 @@
-import React from 'react';
-import { PenTool, RefreshCw, Sparkles } from 'lucide-react';
+import React, { useRef } from 'react';
+import { PenTool, RefreshCw, Sparkles, Upload, Trash2, Image as ImageIcon, Film } from 'lucide-react';
 import { TargetSelector } from '../Shared/TargetSelector';
 
 export function ManualPostView({
@@ -10,14 +10,41 @@ export function ManualPostView({
     generatedContent,
     setGeneratedContent,
     selectedImage,
+    setSelectedImage,
     postingStatus,
     handlePostToGoogle,
     handlePostToInstagram,
     selectedTarget,
     setSelectedTarget,
     activeKeywords,
-    toggleKeyword
+    toggleKeyword,
+    storageFiles = [],
+    onUpload,
+    uploading,
+    uploadProgress,
+    onRefreshFiles,
+    onDeleteFile
 }) {
+    const fileInputRef = useRef(null);
+
+    const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            await onUpload(file);
+        } catch (err) {
+            console.error('Upload failed:', err);
+        }
+        e.target.value = '';
+    };
+
+    const handleSelectMedia = (file) => {
+        setSelectedImage(prev => ({
+            ...prev,
+            'manual': { url: file.url, name: file.name, mediaType: file.mediaType }
+        }));
+    };
+
     return (
         <div className="space-y-6">
             <TargetSelector
@@ -27,8 +54,68 @@ export function ManualPostView({
                 toggleKeyword={toggleKeyword}
             />
 
+            {/* メディア管理エリア */}
             <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4 animate-in fade-in">
-                <h2 className="font-bold text-lg flex items-center gap-2 text-pink-500 font-bold tracking-tighter">
+                <div className="flex justify-between items-center">
+                    <h2 className="font-bold text-lg flex items-center gap-2 text-orange-500 tracking-tighter">
+                        <ImageIcon size={20} /> メディア管理（投稿用）
+                    </h2>
+                    <div className="flex gap-2">
+                        <button onClick={onRefreshFiles} className="text-xs text-blue-500 hover:underline font-bold">再読み込み</button>
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploading}
+                            className="bg-black text-white px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-sm font-bold hover:bg-gray-800 transition-all"
+                        >
+                            <Upload size={14} /> アップロード
+                        </button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*,video/*"
+                            onChange={handleFileChange}
+                            className="hidden"
+                        />
+                    </div>
+                </div>
+
+                {uploading && (
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="bg-orange-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+                    </div>
+                )}
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-60 overflow-y-auto border p-2 rounded-xl bg-gray-50">
+                    {storageFiles.length > 0 ? storageFiles.map(file => (
+                        <div
+                            key={file.fullPath}
+                            className={`cursor-pointer border-2 rounded-lg overflow-hidden relative aspect-square group transition-all ${selectedImage['manual']?.url === file.url ? 'border-orange-500 ring-2 ring-orange-200' : 'border-transparent hover:border-gray-300'}`}
+                        >
+                            {file.mediaType === 'video' ? (
+                                <div onClick={() => handleSelectMedia(file)} className="w-full h-full bg-gray-800 flex items-center justify-center">
+                                    <Film size={24} className="text-white" />
+                                </div>
+                            ) : (
+                                <img onClick={() => handleSelectMedia(file)} src={file.url} alt={file.name} className="w-full h-full object-cover" />
+                            )}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onDeleteFile(file.fullPath); }}
+                                className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <Trash2 size={10} />
+                            </button>
+                        </div>
+                    )) : (
+                        <p className="col-span-full text-center text-gray-400 py-8 text-sm">
+                            画像をアップロードしてください
+                        </p>
+                    )}
+                </div>
+            </div>
+
+            {/* 記事作成エリア */}
+            <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4 animate-in fade-in">
+                <h2 className="font-bold text-lg flex items-center gap-2 text-pink-500 tracking-tighter">
                     <PenTool size={20} /> 記事作成・同時投稿
                 </h2>
                 <textarea
@@ -40,7 +127,7 @@ export function ManualPostView({
                 <button
                     onClick={() => handleGenerate('manual')}
                     disabled={generatingId === 'manual'}
-                    className="w-full bg-black text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:bg-gray-800 transition-all uppercase tracking-widest font-bold"
+                    className="w-full bg-black text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-xl hover:bg-gray-800 transition-all uppercase tracking-widest"
                 >
                     {generatingId === 'manual' ? <RefreshCw className="animate-spin" /> : <Sparkles className="text-yellow-400" />} AI記事生成
                 </button>
@@ -49,10 +136,14 @@ export function ManualPostView({
                     <div className="mt-8 pt-8 border-t space-y-5 animate-in slide-in-from-bottom-2">
                         {selectedImage['manual'] && (
                             <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl border border-gray-100 relative">
-                                <img src={selectedImage['manual'].url} className="w-24 h-24 object-cover rounded-xl shadow-sm border border-white" alt="selected" />
+                                {selectedImage['manual'].mediaType === 'video' ? (
+                                    <div className="w-24 h-24 bg-gray-800 rounded-xl flex items-center justify-center"><Film size={24} className="text-white" /></div>
+                                ) : (
+                                    <img src={selectedImage['manual'].url} className="w-24 h-24 object-cover rounded-xl shadow-sm border border-white" alt="selected" />
+                                )}
                                 <div className="space-y-1 font-bold">
-                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter font-bold">選定画像 (Google Drive)</p>
-                                    <p className="font-bold text-xs text-gray-700 font-bold">{selectedImage['manual'].name}</p>
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">選定メディア (Storage)</p>
+                                    <p className="font-bold text-xs text-gray-700">{selectedImage['manual'].name}</p>
                                 </div>
                             </div>
                         )}

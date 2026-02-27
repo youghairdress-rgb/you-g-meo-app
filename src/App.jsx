@@ -7,6 +7,7 @@ import { useSettings } from './hooks/useSettings';
 import { useInstagram } from './hooks/useInstagram';
 import { useGoogle } from './hooks/useGoogle';
 import { useGemini } from './hooks/useGemini';
+import { useStorage } from './hooks/useStorage';
 import { parseGeneratedContent } from './lib/utils';
 
 // Components
@@ -23,15 +24,8 @@ export default function App() {
   const user = useAuth();
   const { config, setConfig, postingRules, setPostingRules, storyRules, setStoryRules, syncStatus, saveToCloud } = useSettings(user);
   const { posts, loading, fetchInstagramPosts, postToInstagram, postStory } = useInstagram(config, saveToCloud);
-  const { driveCount, driveError, driveFiles, fetchDriveFiles, postToBusinessProfile, getFreshFileUrl } = useGoogle(config);
-
-  // Story Drive Config
-  const storyConfig = useMemo(() => ({
-    ...config,
-    driveFolderId: config.storyDriveFolderId || import.meta.env.VITE_STORY_DRIVE_FOLDER_ID || ""
-  }), [config]);
-
-  const { driveFiles: storyDriveFiles, fetchDriveFiles: fetchStoryFiles, getFreshFileUrl: getFreshStoryUrl } = useGoogle(storyConfig);
+  const { postToBusinessProfile } = useGoogle(config);
+  const { files, uploading, uploadProgress, uploadFile, listFiles, deleteFile } = useStorage();
 
   const { generatedContent, setGeneratedContent, selectedImage, setSelectedImage, generatingId, generateContent } = useGemini(config);
 
@@ -56,6 +50,12 @@ export default function App() {
     setActiveKeywords(prev => prev.includes(kw) ? prev.filter(k => k !== kw) : [...prev, kw]);
   };
 
+  // Initial Storage Fetch
+  useEffect(() => {
+    listFiles('posts');
+    listFiles('stories');
+  }, [listFiles]);
+
   // Schedule Checker
   useEffect(() => {
     const interval = setInterval(() => {
@@ -69,22 +69,14 @@ export default function App() {
       );
 
       if (matched) {
-        if (matched.fileId && matched.topic) {
+        if (matched.topic) {
           showNotice(`自動投稿開始: ${matched.topic}`, 'info');
 
           (async () => {
             try {
-              // 1. Refresh URL
-              let freshUrl = matched.imageUrl;
-              if (matched.fileId) {
-                try {
-                  const u = await getFreshFileUrl(matched.fileId);
-                  if (u) freshUrl = u;
-                } catch (e) { console.error("URL Refresh Error", e); }
-              }
+              const mediaUrl = matched.imageUrl || null;
+              const mediaType = matched.mediaType || 'image';
 
-              // 2. Generate Content
-              // Note: We use existing activeKeywords, which might be risky if they change, but fine for now.
               const generatedText = await generateContent({
                 key: `auto-${matched.id}`,
                 mode: 'manual',
@@ -95,9 +87,8 @@ export default function App() {
 
               const parsed = parseGeneratedContent(generatedText);
 
-              // 3. Post
-              await postToBusinessProfile(parsed.google, freshUrl);
-              await postToInstagram(freshUrl, parsed.instagram);
+              await postToBusinessProfile(parsed.google, mediaUrl, mediaType);
+              await postToInstagram(mediaUrl, parsed.instagram);
 
               showNotice(`自動投稿完了: ${matched.topic}`, "success");
             } catch (e) {
@@ -110,32 +101,17 @@ export default function App() {
         }
       }
 
-      // 2. Story Automation (Auto Post)
+      // 2. Story Automation
       if (storyRules && storyRules.length > 0) {
         const matchedStory = storyRules.find(r =>
           (r.type === 'daily' && r.time === currentTime) ||
           (r.type === 'weekly' && r.day === now.getDay() && r.time === currentTime)
         );
 
-        if (matchedStory) {
+        if (matchedStory && matchedStory.imageUrl) {
           showNotice(`自動投稿開始: ストーリー (${matchedStory.time})`, 'info');
 
-          const performPost = async () => {
-            let targetUrl = matchedStory.imageUrl;
-            // Try to refresh URL if fileId exists
-            if (matchedStory.fileId) {
-              try {
-                const freshUrl = await getFreshStoryUrl(matchedStory.fileId);
-                if (freshUrl) targetUrl = freshUrl;
-              } catch (e) {
-                console.error("URL Refresh Failed:", e);
-              }
-            }
-
-            await postStory(targetUrl);
-          };
-
-          performPost()
+          postStory(matchedStory.imageUrl)
             .then(() => showNotice("自動投稿成功！(ストーリー)", "success"))
             .catch(e => showNotice(`自動投稿失敗: ${e.message}`, "error"));
         }
@@ -143,16 +119,7 @@ export default function App() {
 
     }, 60000);
     return () => clearInterval(interval);
-  }, [postingRules, storyRules, postStory, getFreshStoryUrl, getFreshFileUrl, generateContent, postToBusinessProfile, postToInstagram, activeKeywords]);
-
-  // Initial Drive Fetch
-  useEffect(() => {
-    if (config.geminiKey && config.driveFolderId) fetchDriveFiles();
-  }, [config.geminiKey, config.driveFolderId, fetchDriveFiles]);
-
-  useEffect(() => {
-    if (storyConfig.geminiKey && storyConfig.driveFolderId) fetchStoryFiles();
-  }, [storyConfig.geminiKey, storyConfig.driveFolderId, fetchStoryFiles]);
+  }, [postingRules, storyRules, postStory, generateContent, postToBusinessProfile, postToInstagram, activeKeywords]);
 
 
   // Handlers
@@ -192,23 +159,20 @@ ${reviewText}
         promptText,
         targetAudienceId: selectedTarget,
         activeKeywords,
-        driveFiles
       });
     } catch (e) {
       showNotice("生成失敗", "error");
     }
   };
 
-
-
-  // ... inside hooks
   const handlePostToGoogleWrapper = async (key) => {
     setPostingStatus(prev => ({ ...prev, [key]: { ...prev[key], google: 'posting' } }));
     try {
       const content = generatedContent[key];
       const googleText = typeof content === 'string' ? parseGeneratedContent(content).google : content?.google;
+      const media = selectedImage[key];
 
-      await postToBusinessProfile(googleText, selectedImage[key]?.url);
+      await postToBusinessProfile(googleText, media?.url || null, media?.mediaType || 'image');
       showNotice("Google投稿成功！ ✨", "success");
       setPostingStatus(prev => ({ ...prev, [key]: { ...prev[key], google: 'success' } }));
     } catch (e) {
@@ -281,6 +245,7 @@ ${reviewText}
               generatedContent={generatedContent}
               setGeneratedContent={setGeneratedContent}
               selectedImage={selectedImage}
+              setSelectedImage={setSelectedImage}
               postingStatus={postingStatus}
               handlePostToGoogle={handlePostToGoogleWrapper}
               handlePostToInstagram={handlePostToInstagramWrapper}
@@ -288,15 +253,25 @@ ${reviewText}
               setSelectedTarget={setSelectedTarget}
               activeKeywords={activeKeywords}
               toggleKeyword={toggleKeyword}
+              storageFiles={files.posts}
+              onUpload={(file) => uploadFile(file, 'posts')}
+              uploading={uploading}
+              uploadProgress={uploadProgress}
+              onRefreshFiles={() => listFiles('posts')}
+              onDeleteFile={(path) => deleteFile(path, 'posts')}
             />
           )}
 
           {view === 'story' && (
             <StoryPostView
-              driveFiles={storyDriveFiles}
+              storageFiles={files.stories}
               config={config}
               postStory={postStory}
-              onRefreshDrive={fetchStoryFiles}
+              onUpload={(file) => uploadFile(file, 'stories')}
+              uploading={uploading}
+              uploadProgress={uploadProgress}
+              onRefreshFiles={() => listFiles('stories')}
+              onDeleteFile={(path) => deleteFile(path, 'stories')}
               storyRules={storyRules}
               setStoryRules={setStoryRules}
               saveToCloud={saveToCloud}
@@ -308,7 +283,7 @@ ${reviewText}
               postingRules={postingRules}
               setPostingRules={setPostingRules}
               saveToCloud={saveToCloud}
-              driveFiles={driveFiles}
+              storageFiles={files.posts}
             />
           )}
 
@@ -329,8 +304,6 @@ ${reviewText}
               config={config}
               setConfig={setConfig}
               saveToCloud={saveToCloud}
-              driveCount={driveCount}
-              driveError={driveError}
             />
           )}
         </main>
