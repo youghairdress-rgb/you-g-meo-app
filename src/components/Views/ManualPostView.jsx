@@ -147,66 +147,30 @@ export function ManualPostView({
                                 </div>
                             </div>
                         )}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <label className="font-bold text-xs text-blue-600">Google投稿用</label>
-                                <textarea
-                                    value={typeof generatedContent['manual'] === 'string' ? generatedContent['manual'] : generatedContent['manual']?.google || ''}
-                                    onChange={(e) => {
-                                        const newVal = e.target.value;
-                                        setGeneratedContent(prev => {
-                                            const current = prev['manual'];
-                                            const isStr = typeof current === 'string';
-                                            return {
-                                                ...prev,
-                                                'manual': {
-                                                    google: newVal,
-                                                    instagram: isStr ? current : current.instagram
-                                                }
-                                            };
-                                        });
-                                    }}
-                                    className="w-full h-64 p-4 bg-blue-50/10 border border-blue-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-200"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="font-bold text-xs text-pink-600">Instagram投稿用</label>
-                                <textarea
-                                    value={typeof generatedContent['manual'] === 'string' ? generatedContent['manual'] : generatedContent['manual']?.instagram || ''}
-                                    onChange={(e) => {
-                                        const newVal = e.target.value;
-                                        setGeneratedContent(prev => {
-                                            const current = prev['manual'];
-                                            const isStr = typeof current === 'string';
-                                            return {
-                                                ...prev,
-                                                'manual': {
-                                                    google: isStr ? current : current.google,
-                                                    instagram: newVal
-                                                }
-                                            };
-                                        });
-                                    }}
-                                    className="w-full h-64 p-4 bg-pink-50/10 border border-pink-100 rounded-2xl outline-none focus:ring-2 focus:ring-pink-200"
-                                />
-                            </div>
+                        <div className="space-y-2">
+                            <label className="font-bold text-xs text-blue-600">Google投稿用</label>
+                            <textarea
+                                value={typeof generatedContent['manual'] === 'string' ? generatedContent['manual'] : generatedContent['manual']?.google || ''}
+                                onChange={(e) => {
+                                    const newVal = e.target.value;
+                                    setGeneratedContent(prev => ({
+                                        ...prev,
+                                        'manual': {
+                                            ...prev['manual'],
+                                            google: newVal
+                                        }
+                                    }));
+                                }}
+                                className="w-full h-64 p-4 bg-blue-50/10 border border-blue-100 rounded-2xl outline-none focus:ring-2 focus:ring-blue-200"
+                            />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <button
-                                onClick={() => handlePostToGoogle('manual')}
-                                disabled={postingStatus['manual']?.google === 'posting' || postingStatus['manual']?.google === 'success'}
-                                className={`py-4 rounded-2xl font-bold text-white shadow-xl transition-all ${postingStatus['manual']?.google === 'success' ? 'bg-green-500' : 'bg-blue-600 hover:bg-blue-700'}`}
-                            >
-                                Googleに投稿
-                            </button>
-                            <button
-                                onClick={() => handlePostToInstagram('manual')}
-                                disabled={postingStatus['manual']?.insta === 'posting' || postingStatus['manual']?.insta === 'success'}
-                                className={`py-4 rounded-2xl font-bold text-white shadow-xl transition-all ${postingStatus['manual']?.insta === 'success' ? 'bg-green-500' : 'bg-pink-600 hover:bg-pink-700'}`}
-                            >
-                                Instagramに投稿
-                            </button>
-                        </div>
+                        <button
+                            onClick={() => handlePostToGoogle('manual')}
+                            disabled={postingStatus['manual']?.google === 'posting' || postingStatus['manual']?.google === 'success'}
+                            className={`w-full py-4 rounded-2xl font-bold text-white shadow-xl transition-all ${postingStatus['manual']?.google === 'success' ? 'bg-green-500' : 'bg-blue-600 hover:bg-blue-700'}`}
+                        >
+                            Google(GBP)に投稿する
+                        </button>
                     </div>
                 )}
             </div>

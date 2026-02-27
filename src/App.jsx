@@ -6,6 +6,7 @@ import { useAuth } from './hooks/useAuth';
 import { useSettings } from './hooks/useSettings';
 import { useInstagram } from './hooks/useInstagram';
 import { useGoogle } from './hooks/useGoogle';
+import { useGoogleDrive } from './hooks/useGoogleDrive';
 import { useGemini } from './hooks/useGemini';
 import { useStorage } from './hooks/useStorage';
 import { parseGeneratedContent } from './lib/utils';
@@ -13,8 +14,8 @@ import { parseGeneratedContent } from './lib/utils';
 // Components
 import { Header } from './components/Layout/Header';
 import { Sidebar } from './components/Layout/Sidebar';
-import { DashboardView } from './components/Views/DashboardView';
 import { ManualPostView } from './components/Views/ManualPostView';
+import { InstaPostView } from './components/Views/InstaPostView';
 import StoryPostView from './components/Views/StoryPostView';
 import { ScheduleView } from './components/Views/ScheduleView';
 import { ReviewView } from './components/Views/ReviewView';
@@ -25,6 +26,7 @@ export default function App() {
   const { config, setConfig, postingRules, setPostingRules, storyRules, setStoryRules, syncStatus, saveToCloud } = useSettings(user);
   const { posts, loading, fetchInstagramPosts, postToInstagram, postStory } = useInstagram(config, saveToCloud);
   const { postToBusinessProfile } = useGoogle(config);
+  const { driveFiles, loading: loadingDrive, fetchDriveFiles } = useGoogleDrive(config);
   const { files, uploading, uploadProgress, uploadFile, listFiles, deleteFile } = useStorage();
 
   const { generatedContent, setGeneratedContent, selectedImage, setSelectedImage, generatingId, generateContent } = useGemini(config);
@@ -54,7 +56,8 @@ export default function App() {
   useEffect(() => {
     listFiles('posts');
     listFiles('stories');
-  }, [listFiles]);
+    fetchDriveFiles();
+  }, [listFiles, fetchDriveFiles]);
 
   // Schedule Checker
   useEffect(() => {
@@ -190,7 +193,10 @@ ${reviewText}
       const instaText = typeof content === 'string' ? parseGeneratedContent(content).instagram : content?.instagram;
       const media = selectedImage[key];
 
-      await postToInstagram(media?.fullPath, instaText, media?.mediaType || 'image');
+      // insta_post の場合は Google Drive の URL を、それ以外 (manual/rewrite) は fullPath (Storage) を使用
+      const mediaTarget = (key === 'insta_post') ? media?.url : media?.fullPath;
+
+      await postToInstagram(mediaTarget, instaText, media?.mediaType || 'image');
       showNotice("Instagram投稿成功！ 📸", "success");
       setPostingStatus(prev => ({ ...prev, [key]: { ...prev[key], insta: 'success' } }));
     } catch (e) {
@@ -219,21 +225,22 @@ ${reviewText}
 
         <main className="flex-1 min-w-0 space-y-6">
           {view === 'dashboard' && (
-            <DashboardView
-              posts={posts}
-              loading={loading}
-              fetchInstagramPosts={fetchInstagramPosts}
+            <InstaPostView
+              driveFiles={driveFiles}
+              loadingDrive={loadingDrive}
+              onRefreshDrive={fetchDriveFiles}
               handleGenerate={handleGenerateWrapper}
               generatingId={generatingId}
               generatedContent={generatedContent}
               setGeneratedContent={setGeneratedContent}
               postingStatus={postingStatus}
-              handlePostToGoogle={handlePostToGoogleWrapper}
               handlePostToInstagram={handlePostToInstagramWrapper}
               selectedTarget={selectedTarget}
               setSelectedTarget={setSelectedTarget}
               activeKeywords={activeKeywords}
               toggleKeyword={toggleKeyword}
+              selectedImage={selectedImage}
+              setSelectedImage={setSelectedImage}
             />
           )}
 

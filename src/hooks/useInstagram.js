@@ -42,27 +42,29 @@ export function useInstagram(config, saveToCloud) {
         if (!config.instaBusinessId || !config.instaToken) throw new Error("Instagram連携未設定");
         if (!mediaPathOrUrl) throw new Error("メディアパスが必要です");
 
-        let mediaPath = mediaPathOrUrl;
+        // URLがFirebase Storageのものであればパスを抽出し、そうでなければそのまま公開URLとして扱う
+        let publicUrl = mediaPathOrUrl;
 
-        // パスがフルURL (https://...) の場合はパス部分を抽出
         if (mediaPathOrUrl.startsWith('http')) {
-            try {
-                const decodedUrl = decodeURIComponent(mediaPathOrUrl);
-                const match = decodedUrl.match(/\/o\/(.+?)\?/);
-                if (match && match[1]) {
-                    mediaPath = match[1];
+            if (mediaPathOrUrl.includes('firebasestorage.googleapis.com')) {
+                try {
+                    const decodedUrl = decodeURIComponent(mediaPathOrUrl);
+                    const match = decodedUrl.match(/\/o\/(.+?)\?/);
+                    if (match && match[1]) {
+                        const mediaPath = match[1];
+                        const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+                        publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(mediaPath)}?alt=media`;
+                    }
+                } catch (e) {
+                    console.warn("Firebase URL extraction failed", e);
                 }
-            } catch (e) {
-                console.warn("URL to Path conversion failed", e);
             }
+            // Google Drive等のURLはそのまま publicUrl として使用される
+        } else {
+            // パス（posts/xxx）のみ渡された場合は Firebase 公開URLを構築
+            const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+            publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(mediaPathOrUrl)}?alt=media`;
         }
-
-        const isVideo = type === 'video';
-
-        // 1. 直通公開メディアURLの構築
-        // トークンやプロキシを介さないため、Meta のスクレイパーが最も確実に取得できる形式
-        const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(mediaPath)}?alt=media`;
 
         const params = new URLSearchParams();
         params.append('access_token', config.instaToken);
@@ -143,8 +145,11 @@ export function useInstagram(config, saveToCloud) {
         }
 
         const isVideo = type === 'video';
-        const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(mediaPath)}?alt=media`;
+        let publicUrl = mediaPathOrUrl;
+        if (!mediaPathOrUrl.startsWith('http')) {
+            const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+            publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(mediaPathOrUrl)}?alt=media`;
+        }
 
         const params = new URLSearchParams();
         params.append('access_token', config.instaToken);

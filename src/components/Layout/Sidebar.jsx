@@ -15,9 +15,9 @@ export function Sidebar({ view, setView }) {
 
     return (
         <nav className="md:w-60 flex-shrink-0 flex md:flex-col gap-1 fixed md:static bottom-0 left-0 w-full bg-white md:bg-transparent p-2 md:p-0 border-t md:border-0 z-30 justify-around md:justify-start shadow-up md:shadow-none font-bold">
-            <NavItem id="dashboard" icon={Instagram} label="インスタ" />
+            <NavItem id="dashboard" icon={Instagram} label="インスタ投稿" />
             <NavItem id="story" icon={Camera} label="ストーリー" />
-            <NavItem id="manual" icon={PenTool} label="作成" />
+            <NavItem id="manual" icon={PenTool} label="Google投稿(GBP)" />
             <NavItem id="schedule" icon={Calendar} label="予約管理" />
             <NavItem id="review" icon={MessageSquare} label="口コミ返信" />
             <NavItem id="settings" icon={Settings} label="設定" />
